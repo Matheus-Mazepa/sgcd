@@ -1,0 +1,81 @@
+version: '3.7'
+services:
+  app: &app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/var/www/app
+      - bundle_path:/bundle
+    tmpfs:
+      - /tmp
+    depends_on:
+      - db
+    stdin_open: true
+    tty: true
+
+  web:
+    <<: *app
+    command: >
+      bash -c "
+        rm -f tmp/pids/server.pid &&
+        bundle exec rails s -p 3000 -b '0.0.0.0'
+        "
+    ports:
+      - 3000:3000
+    environment:
+      RAILS_ENV: development
+
+  db:
+    image: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+    networks:
+      default:
+      internal:
+        aliases:
+          - backend-server
+
+  tests:
+    <<: *app
+    command: >
+      bash -c "
+        rm -f tmp/pids/server.pid &&
+        bundle exec puma -b tcp://0.0.0.0:3001 -d &&
+        bundle exec puma -C config/puma.rb
+        "
+    ports:
+      - 3001:3001
+    environment:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres@db
+      SELENIUM_HOST: selenium
+      SELENIUM_PORT: 4444
+      TEST_APP_HOST: tests
+      TEST_PORT: 3001
+    shm_size: '2gb'
+    networks:
+      default:
+      internal:
+
+  selenium:
+    image: selenium/standalone-chrome-debug:3.9.1-actinium
+    ports:
+      - 4444:4444
+      - 5900:5900
+    logging:
+      driver: none
+
+volumes:
+  pgdata:
+    driver: local
+  bundle_path:
+
+networks:
+  internal:
